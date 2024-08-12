@@ -83,6 +83,7 @@ def _lru_cachemthod_wrapper(
         """clears the cache"""
         nonlocal misses, hits
         with lock:
+            seed_cache_keys.clear()
             cache.clear()
             misses = 0
             hits = 0
