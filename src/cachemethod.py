@@ -1,8 +1,7 @@
-from sys import maxsize
 import time
 from threading import Lock
 from functools import wraps
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from typing import Callable, TypeVar, Optional
 
 
@@ -41,6 +40,10 @@ def _lru_cachemthod_wrapper(
     lock = Lock()
     cache = {}
 
+    # keeps record of generated seeds and
+    # keys created by this seed in the `cache` dict
+    seed_cache_keys = defaultdict(set)
+
     misses = hits = 0
 
     @wraps(func)
@@ -66,6 +69,7 @@ def _lru_cachemthod_wrapper(
                 return results
             misses += 1
 
+        seed_cache_keys[seed].add(key)
         results = func(__self__, *args, **kwargs)
         cache[key] = results
         return results
@@ -88,8 +92,17 @@ def _lru_cachemthod_wrapper(
         if seed is None:
             return
 
-    cache_wrapper.cache_clear = cache_clear
+        with lock:
+            cache_keys = seed_cache_keys[seed]
+            for cache_key in cache_keys:
+                del cache[cache_key]
+
+            del seed_cache_keys[seed]
+            delattr(__self__, _CACHE_SEED_ATTR)
+
     cache_wrapper.cache_info = cache_info
+    cache_wrapper.cache_clear = cache_clear
+    cache_wrapper.cache_clear_instance = cache_clear_instance
     return cache_wrapper
 
 
