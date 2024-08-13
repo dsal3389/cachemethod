@@ -54,15 +54,15 @@ def _lru_cachemthod_wrapper(
     def cache_wrapper(__self__, *args, **kwargs) -> _RT:
         nonlocal misses, hits, full, root
 
-        # get the seed from the instance, if no
-        # seed found, generate and set it
-        if not hasattr(__self__, _CACHE_SEED_ATTR):
-            with lock:
+        with lock:
+            # get the seed from the instance, if no
+            # seed found, generate and set it
+            if not hasattr(__self__, _CACHE_SEED_ATTR):
                 seed = _make_seed(used_seeds)
                 used_seeds.add(seed)
-            setattr(__self__, _CACHE_SEED_ATTR, seed)
-        else:
-            seed = getattr(__self__, _CACHE_SEED_ATTR)
+                setattr(__self__, _CACHE_SEED_ATTR, seed)
+            else:
+                seed = getattr(__self__, _CACHE_SEED_ATTR)
 
         key = _make_cache_key(seed, args, kwargs)
 
