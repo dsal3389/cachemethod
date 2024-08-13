@@ -1,9 +1,11 @@
 import time
 from threading import Lock
 from functools import wraps
-from collections import namedtuple, defaultdict
+from collections import namedtuple
 from typing import Callable, TypeVar, Optional
 
+
+__all__ = ("lru_cachemethod",)
 
 _RT = TypeVar("_RT")
 
@@ -138,8 +140,3 @@ def lru_cachemethod(maxsize: Optional[int] = 128) -> Callable[..., Callable[...,
         return _lru_cachemthod_wrapper(func, maxsize=maxsize)
 
     return _lru_cachemethod_deco
-
-
-def cachemethod(func: Callable[..., _RT]) -> Callable[..., _RT]:
-    """returns `lru_cachemethod` with no limit"""
-    return lru_cachemethod(maxsize=None)(func)
