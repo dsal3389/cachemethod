@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cachemethod"
-version = "0.1.0"
+version = "1.0.0"
 description = ""
 authors = ["daniel sonbolian <dsal3389@gmail.com>"]
 readme = "README.md"
