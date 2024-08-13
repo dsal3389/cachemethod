@@ -2,6 +2,10 @@
 python's missing cache functionality, you can cache a regular function
 you can cache `staticmethod` and `classmethod` but you can't really cache a method that takes `self`.
 
+```console
+pip3 install cachemethod
+```
+
 ## why can't I use cache on a method that takes self?
 python `cache` doesn't actually stores the hash of the *args and *kwargs (including `self`), but it
 puts it into a tuple (which is hashable) and that tuple is used as a key in the cache `dict`, thus
