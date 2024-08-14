@@ -1,4 +1,6 @@
+import enum
 import time
+import weakref
 from threading import Lock
 from functools import wraps
 from collections import namedtuple
@@ -13,20 +15,29 @@ _CACHE_SEED_ATTR = "__cache_seed__"
 
 _CacheInfo = namedtuple("CacheInfo", ("misses", "hits", "maxsize", "full"))
 _PREV, _NEXT, _KEY, _RESULT = 0, 1, 2, 3
+_LRU_DEFAULT_MAXSIZE = 128
 
 
-class _CacheMiss:
-    pass
+class _CacheVariant(enum.Enum):
+    SEED = enum.auto()
+    WEAKREF = enum.auto()
 
 
-def _make_cache_key(seed, args, kwargs):
+def _hash_args_kwargs(args, kwargs) -> int:
+    return hash(args) + sum(map(hash, kwargs.items()))
+
+
+def _make_cache_key_seed(seed, args, kwargs) -> int:
     """generates a cache key based on given seed, args and kwargs"""
-    cache_key = seed
-    cache_key += hash(args)
+    return seed + _hash_args_kwargs(args, kwargs)
 
-    for item in kwargs.items():
-        cache_key += hash(item)
-    return cache_key
+
+def _make_cache_key_weakref(__weak_self__, args, kwargs):
+    """
+    stored `self` weakref in the tuple key, making the weakref instance never die
+    but the pointed instance is free to die
+    """
+    return (__weak_self__, _hash_args_kwargs(args, kwargs))
 
 
 def _make_seed(used_seeds: set[int]) -> int:
@@ -36,14 +47,52 @@ def _make_seed(used_seeds: set[int]) -> int:
     return seed
 
 
+def _marshall_seed(__self__, cache_lock: Lock, used_seeds_set: set):
+    with cache_lock:
+        # get the seed from the instance, if no
+        # seed found, generate and set it
+        if not hasattr(__self__, _CACHE_SEED_ATTR):
+            seed = _make_seed(used_seeds_set)
+            used_seeds_set.add(seed)
+            setattr(__self__, _CACHE_SEED_ATTR, seed)
+            return seed
+        else:
+            return getattr(__self__, _CACHE_SEED_ATTR)
+
+
+def _marshall_weakref(__self__, cache_lock: Lock):
+    return weakref.ref(__self__)
+
+
+def _base_seed():
+    used_seeds_set = set()
+    return (
+        lambda *args, **kwargs: _marshall_seed(
+            *args, **kwargs, used_seeds_set=used_seeds_set
+        ),
+        _make_cache_key_seed,
+    )
+
+
+def _base_weakref():
+    return (_marshall_weakref, _make_cache_key_weakref)
+
+
 def _lru_cachemthod_wrapper(
-    func: Callable[..., _RT], maxsize: int
+    func: Callable[..., _RT],
+    maxsize: int,
+    base: Callable[[], tuple[Callable, Callable]],
 ) -> Callable[..., _RT]:
     misses = hits = 0
-    used_seeds = set()
     lock = Lock()
     full = False
     cache = {}
+
+    # base function should return 2 functions, first is "marshall" function (i don't have a better name)
+    # which takes `self` and the lock, and should return a marshalled self that we can
+    # pass to `make_key` which is the 2 function returned by `base` that should
+    # return to us a valid hash key
+    marshall_self, make_key = base()
 
     # root is the root of the circular queue, values
     # matching the _PREV, _NEXT, _KEY, _RESULT consts
@@ -54,21 +103,12 @@ def _lru_cachemthod_wrapper(
     def cache_wrapper(__self__, *args, **kwargs) -> _RT:
         nonlocal misses, hits, full, root
 
-        with lock:
-            # get the seed from the instance, if no
-            # seed found, generate and set it
-            if not hasattr(__self__, _CACHE_SEED_ATTR):
-                seed = _make_seed(used_seeds)
-                used_seeds.add(seed)
-                setattr(__self__, _CACHE_SEED_ATTR, seed)
-            else:
-                seed = getattr(__self__, _CACHE_SEED_ATTR)
-
-        key = _make_cache_key(seed, args, kwargs)
+        marshalled_self = marshall_self(__self__, lock)
+        key = make_key(marshalled_self, args, kwargs)
 
         with lock:
-            node = cache.get(key, _CacheMiss)
-            if node is not _CacheMiss:
+            node = cache.get(key)
+            if node is not None:
                 prev, next_, key, result = node
 
                 # pop the current node from its position
@@ -135,8 +175,15 @@ def _lru_cachemthod_wrapper(
     return cache_wrapper
 
 
-def lru_cachemethod(maxsize: Optional[int] = 128) -> Callable[..., Callable[..., _RT]]:
+def lru_cachemethod(maxsize: int = _LRU_DEFAULT_MAXSIZE):
     def _lru_cachemethod_deco(func: Callable[..., _RT]) -> Callable[..., _RT]:
-        return _lru_cachemthod_wrapper(func, maxsize=maxsize)
+        return _lru_cachemthod_wrapper(func, maxsize=maxsize, base=_base_seed)
+
+    return _lru_cachemethod_deco
+
+
+def weakref_lru_cachemethod(maxsize: int = _LRU_DEFAULT_MAXSIZE):
+    def _lru_cachemethod_deco(func: Callable[..., _RT]) -> Callable[..., _RT]:
+        return _lru_cachemthod_wrapper(func, maxsize=maxsize, base=_base_weakref)
 
     return _lru_cachemethod_deco
