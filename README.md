@@ -19,6 +19,12 @@ in the `cache` dict, so instance that was created on the same memory and passed 
 can hit the cache and cause unexpected results
 
 ## how this package solves the issue
-it creates a `seed` which is a random integer and attaches it to the instance, based on that `seed` caching is done
+there are 2 options `seed` based, and `weakref` based
+
+#### seed
+creates a `seed` which is a random integer and attaches it to the instance, based on that `seed` caching is done
 not relying on the class `hash` and not storing references
+
+#### weakref
+like python builtin cache the cache key is a `tuple` but `self` is stored behind a `weakref` instance
 

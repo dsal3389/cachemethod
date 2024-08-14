@@ -1,10 +1,9 @@
-import enum
 import time
 import weakref
 from threading import Lock
 from functools import wraps
 from collections import namedtuple
-from typing import Callable, TypeVar, Optional
+from typing import Callable, TypeVar
 
 
 __all__ = ("lru_cachemethod",)
@@ -16,11 +15,6 @@ _CACHE_SEED_ATTR = "__cache_seed__"
 _CacheInfo = namedtuple("CacheInfo", ("misses", "hits", "maxsize", "full"))
 _PREV, _NEXT, _KEY, _RESULT = 0, 1, 2, 3
 _LRU_DEFAULT_MAXSIZE = 128
-
-
-class _CacheVariant(enum.Enum):
-    SEED = enum.auto()
-    WEAKREF = enum.auto()
 
 
 def _hash_args_kwargs(args, kwargs) -> int:
